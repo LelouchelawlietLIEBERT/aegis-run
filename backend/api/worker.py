@@ -177,20 +177,16 @@ def _format_diff(before: dict[str, tuple[int, int]], after: dict[str, tuple[int,
     return changes
 
 
-def _make_preexec(memory_bytes: int, max_pids: int, timeout_ms: int):
+def _make_preexec(timeout_ms: int):
     def apply_limits() -> None:
         if _resource is None:
             return
         cpu_seconds = max(1, math.ceil(timeout_ms / 1000))
         limits = [
-            (_resource.RLIMIT_AS, memory_bytes),
-            (_resource.RLIMIT_DATA, memory_bytes),
             (_resource.RLIMIT_CPU, cpu_seconds),
             (_resource.RLIMIT_FSIZE, 64 * 1024 * 1024),
             (_resource.RLIMIT_CORE, 0),
         ]
-        if hasattr(_resource, "RLIMIT_NPROC"):
-            limits.append((_resource.RLIMIT_NPROC, max(1, max_pids)))
         for resource_id, value in limits:
             try:
                 _resource.setrlimit(resource_id, (value, value))
@@ -223,7 +219,7 @@ def _kill_tree(proc: asyncio.subprocess.Process) -> None:
             pass
 
 
-async def _monitor_peak(pid: int, holder: list[int]) -> None:
+async def _monitor_usage(pid: int, holder: list[int], memory_limit_bytes: int) -> None:
     path = f"/proc/{pid}/status"
     while True:
         try:
@@ -233,10 +229,49 @@ async def _monitor_peak(pid: int, holder: list[int]) -> None:
                         value = int(line.split()[1]) * 1024
                         if value > holder[0]:
                             holder[0] = value
-                        break
+                    elif line.startswith("VmRSS:"):
+                        value = int(line.split()[1]) * 1024
+                        if value > holder[0]:
+                            holder[0] = value
+                        if value > memory_limit_bytes and holder[1] == 0:
+                            holder[1] = 1
+                            try:
+                                os.killpg(pid, signal.SIGKILL)
+                            except (ProcessLookupError, PermissionError, OSError):
+                                pass
         except (OSError, ValueError, IndexError):
             pass
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.005)
+
+
+async def _monitor_pids(pid: int, holder: list[int], max_pids: int) -> None:
+    while True:
+        tasks = 0
+        try:
+            for entry in os.listdir("/proc"):
+                if not entry.isdigit():
+                    continue
+                other = int(entry)
+                try:
+                    if os.getpgid(other) != pid:
+                        continue
+                except (ProcessLookupError, PermissionError, OSError):
+                    continue
+                try:
+                    tasks += len(os.listdir(f"/proc/{other}/task"))
+                except OSError:
+                    tasks += 1
+                if tasks > max_pids:
+                    break
+        except OSError:
+            tasks = 0
+        if tasks > max_pids and holder[2] == 0:
+            holder[2] = 1
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        await asyncio.sleep(0.05)
 
 
 def _dev_command(command: list[str], is_compile: bool) -> list[str]:
@@ -282,7 +317,7 @@ async def _dev_pass(
 
     kwargs: dict[str, object] = {}
     if os.name == "posix":
-        kwargs["preexec_fn"] = _make_preexec(memory_bytes, max_pids, timeout_ms)
+        kwargs["preexec_fn"] = _make_preexec(timeout_ms)
         kwargs["start_new_session"] = True
     else:
         kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -292,8 +327,9 @@ async def _dev_pass(
         cpu_before = _resource.getrusage(_resource.RUSAGE_CHILDREN)
 
     started = time.perf_counter()
-    peak_holder = [0]
+    holder = [0, 0, 0]
     monitor: asyncio.Task[None] | None = None
+    pid_monitor: asyncio.Task[None] | None = None
     with open(stdin_path, "rb") as stdin_handle, open(out_path, "wb") as stdout_handle, open(
         err_path, "wb"
     ) as stderr_handle:
@@ -310,7 +346,8 @@ async def _dev_pass(
         except OSError as exc:
             raise EngineError(f"developer preview could not launch {command[0]}: {exc}") from exc
         if os.name == "posix" and os.path.isdir("/proc"):
-            monitor = asyncio.create_task(_monitor_peak(proc.pid, peak_holder))
+            monitor = asyncio.create_task(_monitor_usage(proc.pid, holder, memory_bytes))
+            pid_monitor = asyncio.create_task(_monitor_pids(proc.pid, holder, max_pids))
         timed_out = False
         try:
             await asyncio.wait_for(proc.wait(), timeout=max(0.1, timeout_ms / 1000.0))
@@ -325,6 +362,12 @@ async def _dev_pass(
                     await monitor
                 except asyncio.CancelledError:
                     pass
+            if pid_monitor is not None:
+                pid_monitor.cancel()
+                try:
+                    await pid_monitor
+                except asyncio.CancelledError:
+                    pass
     wall_ms = (time.perf_counter() - started) * 1000.0
 
     cpu_user_ms = 0.0
@@ -336,7 +379,19 @@ async def _dev_pass(
 
     return_code = proc.returncode if proc.returncode is not None else 0
     term_signal = 0
-    if timed_out:
+    oom_exceeded = holder[1] == 1
+    pids_limit_hit = holder[2] == 1
+    if oom_exceeded:
+        status = "MEMORY_LIMIT_EXCEEDED"
+        sub_reason = f"developer preview RSS watchdog fired above {memory_bytes} bytes"
+        exit_code = 0
+        term_signal = int(getattr(signal, "SIGKILL", 9))
+    elif pids_limit_hit:
+        status = "PID_LIMIT_HIT"
+        sub_reason = f"developer preview task watchdog fired above {max_pids} tasks"
+        exit_code = 0
+        term_signal = int(getattr(signal, "SIGKILL", 9))
+    elif timed_out:
         status = "TIME_LIMIT_EXCEEDED"
         sub_reason = f"developer preview watchdog fired after {timeout_ms} ms"
         exit_code = 0
@@ -369,8 +424,10 @@ async def _dev_pass(
 
     audit = [
         "developer_preview: cgroup v2 accounting unavailable",
-        "developer_preview: mount and PID namespaces unavailable",
-        f"developer_preview: applied RLIMIT_AS={memory_bytes} RLIMIT_NPROC={max_pids} RLIMIT_CPU={max(1, math.ceil(timeout_ms / 1000))}",
+        "developer_preview: mount, PID, network and seccomp isolation unavailable",
+        f"developer_preview: applied RLIMIT_CPU={max(1, math.ceil(timeout_ms / 1000))} with RSS watchdog",
+        f"developer_preview: memory ceiling {memory_bytes} bytes enforced by RSS watchdog",
+        f"developer_preview: pids.max={max_pids} enforced by task watchdog",
         f"developer_preview: exec {' '.join(command)}",
     ]
 
@@ -383,9 +440,9 @@ async def _dev_pass(
         wall_ms=wall_ms,
         cpu_user_ms=cpu_user_ms,
         cpu_sys_ms=cpu_sys_ms,
-        peak_memory_bytes=peak_holder[0],
-        oom_killed=False,
-        pids_max_hit=False,
+        peak_memory_bytes=holder[0],
+        oom_killed=oom_exceeded,
+        pids_max_hit=pids_limit_hit,
         blocked_syscall="",
         fs_diff=changes,
         audit_log=audit,
@@ -597,6 +654,7 @@ async def _run_locked(request: ExecuteRequest, queue_wait_ms: float) -> ExecuteR
             audit_log.extend(compile_outcome.audit_log)
             audit_log.append(f"worker: pass 1 compilation finished with {compile_outcome.status} in {compile_ms:.3f} ms")
             if compile_outcome.status != "EXIT_SUCCESS":
+                compile_text = _combine_outputs(compile_out, compile_err)
                 teardown_start = time.perf_counter()
                 shutil.rmtree(job_dir, ignore_errors=True)
                 cleanup_done = True
@@ -628,7 +686,7 @@ async def _run_locked(request: ExecuteRequest, queue_wait_ms: float) -> ExecuteR
                     blocked_syscall=compile_outcome.blocked_syscall,
                     stdout="",
                     stderr="",
-                    compiler_output=_combine_outputs(compile_out, compile_err),
+                    compiler_output=compile_text,
                     fs_diff=compile_outcome.fs_diff,
                     timings=timings,
                     audit_log=audit_log,

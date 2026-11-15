@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, FileCode2, Terminal, Upload } from "lucide-r
 
 import { EXTENSION_TO_LANGUAGE } from "../config/presets";
 import type { LanguageKey } from "../config/presets";
+import GtkWindow from "./GtkWindow";
 
 interface EditorPaneProps {
   language: LanguageKey;
@@ -17,6 +18,13 @@ interface EditorPaneProps {
   onUploadError: (message: string) => void;
   onRun: () => void;
 }
+
+const LANGUAGE_LABELS: Record<LanguageKey, string> = {
+  cpp: "C++20",
+  c: "C11",
+  python: "Python 3",
+  javascript: "Node.js",
+};
 
 export default function EditorPane({
   language,
@@ -37,6 +45,7 @@ export default function EditorPane({
   const lineCount = code.length === 0 ? 1 : code.split("\n").length;
   const lineNumbers = Array.from({ length: lineCount }, (_, index) => index + 1);
   const byteCount = new TextEncoder().encode(code).length;
+  const stdinBytes = new TextEncoder().encode(stdin).length;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -89,28 +98,30 @@ export default function EditorPane({
   };
 
   return (
-    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-stroke bg-panel shadow-panel">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stroke px-4 py-3">
-        <div className="flex items-center gap-2">
-          <FileCode2 size={16} className="text-accent" />
-          <span className="rounded border border-stroke bg-ink/70 px-2 py-1 font-mono text-[11px] font-semibold tracking-wide text-slate-200">
-            {filename}
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">
-            {language === "cpp" ? "C++20" : language === "c" ? "C11" : language === "python" ? "Python 3" : "Node.js"}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-[10px] tracking-[0.12em] text-slate-500">
+    <GtkWindow
+      id="editor"
+      title="Source Editor"
+      icon={<FileCode2 size={14} />}
+      bodyClassName="flex flex-col"
+      badges={
+        <>
+          <span className="gtk-badge gtk-badge--accent">{filename}</span>
+          <span className="gtk-badge hidden sm:inline-flex">{LANGUAGE_LABELS[language]}</span>
+          <span className="gtk-badge hidden sm:inline-flex">
             {lineCount} LN · {byteCount} B
           </span>
+        </>
+      }
+      actions={
+        <>
           <button
             type="button"
+            className="gtk-button gtk-button--flat h-7 px-2 text-[11px]"
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-stroke bg-ink/60 px-2.5 py-1.5 font-mono text-[10px] font-semibold tracking-[0.12em] text-slate-300 transition hover:border-accent/50 hover:text-accent"
+            title="Upload a .cpp, .c, .py or .js file"
           >
-            <Upload size={13} />
-            UPLOAD FILE
+            <Upload size={12} />
+            <span className="hidden sm:inline">Upload File</span>
           </button>
           <input
             ref={fileInputRef}
@@ -119,15 +130,11 @@ export default function EditorPane({
             onChange={handleUpload}
             className="hidden"
           />
-        </div>
-      </div>
-
-      <div className="flex min-h-0 flex-1 bg-[#070b14]">
-        <div
-          ref={gutterRef}
-          className="w-12 shrink-0 select-none overflow-hidden border-r border-stroke/70 bg-[#080d18] py-4 text-right font-mono text-xs leading-6 text-slate-600"
-          aria-hidden="true"
-        >
+        </>
+      }
+    >
+      <div className="flex h-[430px] min-h-0 bg-white sm:h-[480px] xl:h-[540px]">
+        <div ref={gutterRef} className="editor-gutter" aria-hidden="true">
           {lineNumbers.map((line) => (
             <div key={line} className="pr-3">
               {line}
@@ -144,47 +151,46 @@ export default function EditorPane({
           autoCorrect="off"
           wrap="off"
           aria-label="Source code editor"
-          className="h-[430px] min-w-0 flex-1 resize-none overflow-auto bg-transparent px-4 py-4 font-mono text-xs leading-6 text-slate-200 caret-emerald outline-none sm:h-[480px] xl:h-[520px]"
+          className="editor-textarea h-full"
         />
       </div>
 
-      <div className="border-t border-stroke">
+      <div className="border-t border-[#deddda]">
         <button
           type="button"
           onClick={() => setStdinOpen((open) => !open)}
-          className="flex w-full items-center justify-between px-4 py-2.5 text-left transition hover:bg-ink/40"
+          className="flex w-full items-center justify-between bg-[#f6f5f4] px-3 py-2 text-left hover:bg-[#ededec]"
+          aria-expanded={stdinOpen}
         >
-          <span className="flex items-center gap-2 font-mono text-[10px] font-semibold tracking-[0.18em] text-slate-400">
-            <Terminal size={13} className="text-slate-500" />
-            STDIN
-            <span className="rounded bg-ink/80 px-1.5 py-0.5 text-[9px] text-slate-500">
-              {new TextEncoder().encode(stdin).length} B
-            </span>
+          <span className="flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#5e5c64]">
+            <Terminal size={13} />
+            Standard Input
+            <span className="gtk-badge normal-case tracking-normal">{stdinBytes} B</span>
           </span>
           {stdinOpen ? (
-            <ChevronDown size={14} className="text-slate-500" />
+            <ChevronDown size={14} className="text-[#5e5c64]" />
           ) : (
-            <ChevronRight size={14} className="text-slate-500" />
+            <ChevronRight size={14} className="text-[#5e5c64]" />
           )}
         </button>
         {stdinOpen ? (
-          <div className="px-4 pb-4">
+          <div className="border-t border-[#deddda] bg-white p-3">
             <textarea
               value={stdin}
               onChange={(event) => onStdinChange(event.target.value)}
               spellCheck={false}
               rows={4}
               placeholder="stdin bytes delivered to the sandbox"
-              className="w-full resize-y rounded-lg border border-stroke bg-[#070b14] px-3 py-2 font-mono text-xs leading-5 text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-accent/60"
+              className="w-full resize-y rounded border border-[#c0bfbc] bg-[#f6f5f4] px-2.5 py-2 font-mono text-[11px] leading-5 text-charcoal outline-none placeholder:text-[#9a9996] focus:border-[#3584e4]"
             />
           </div>
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-stroke px-4 py-2 font-mono text-[10px] tracking-[0.1em] text-slate-600">
-        <span>TAB = 4 SPACES</span>
-        <span>CTRL + ENTER = RUN IN SANDBOX</span>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#deddda] bg-[#f6f5f4] px-3 py-1.5 font-mono text-[9.5px] uppercase tracking-[0.06em] text-[#77767b]">
+        <span>Tab = 4 spaces</span>
+        <span>Ctrl + Enter = Run in sandbox</span>
       </div>
-    </section>
+    </GtkWindow>
   );
 }

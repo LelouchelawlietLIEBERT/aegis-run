@@ -38,19 +38,6 @@ if [ ! -f "${ROOTFS_DIR}/etc/alpine-release" ]; then
 fi
 rm -rf "${TMP_DIR}"
 
-if [ ! -x "${ROOTFS_DIR}/usr/bin/g++" ]; then
-  ${SUDO} cp /etc/resolv.conf "${ROOTFS_DIR}/etc/resolv.conf"
-  ${SUDO} chroot "${ROOTFS_DIR}" /sbin/apk add --no-cache g++ gcc musl-dev binutils python3 nodejs
-fi
-
-if [ ! -f "${CGROUP_ROOT}/cgroup.controllers" ]; then
-  ${SUDO} mount -t cgroup2 none "${CGROUP_ROOT}" || true
-fi
-
-if [ -f "${CGROUP_ROOT}/cgroup.controllers" ]; then
-  ${SUDO} sh -c "echo '+cpu +memory +pids' > ${CGROUP_ROOT}/cgroup.subtree_control" || true
-fi
-
 ${SUDO} mkdir -p "${ROOTFS_DIR}/app" "${ROOTFS_DIR}/proc" "${ROOTFS_DIR}/tmp" "${ROOTFS_DIR}/old_root" "${ROOTFS_DIR}/dev" "${BIN_DIR}" "${SHM_DIR}"
 ${SUDO} chmod 1777 "${ROOTFS_DIR}/tmp"
 ${SUDO} chmod 1777 "${SHM_DIR}"
@@ -66,6 +53,33 @@ if [ ! -e "${ROOTFS_DIR}/dev/random" ]; then
 fi
 if [ ! -e "${ROOTFS_DIR}/dev/urandom" ]; then
   ${SUDO} mknod -m 666 "${ROOTFS_DIR}/dev/urandom" c 1 9 || true
+fi
+
+PROC_MOUNTED=0
+cleanup_proc() {
+  if [ "${PROC_MOUNTED}" -eq 1 ]; then
+    ${SUDO} umount -l "${ROOTFS_DIR}/proc" || true
+    PROC_MOUNTED=0
+  fi
+}
+trap cleanup_proc EXIT
+
+if [ ! -x "${ROOTFS_DIR}/usr/bin/g++" ]; then
+  ${SUDO} rm -f "${ROOTFS_DIR}/etc/resolv.conf"
+  ${SUDO} cp /etc/resolv.conf "${ROOTFS_DIR}/etc/resolv.conf"
+  if ${SUDO} mount -t proc proc "${ROOTFS_DIR}/proc"; then
+    PROC_MOUNTED=1
+  fi
+  ${SUDO} chroot "${ROOTFS_DIR}" /sbin/apk add --no-cache g++ gcc musl-dev binutils python3 nodejs
+  cleanup_proc
+fi
+
+if [ ! -f "${CGROUP_ROOT}/cgroup.controllers" ]; then
+  ${SUDO} mount -t cgroup2 none "${CGROUP_ROOT}" || true
+fi
+
+if [ -f "${CGROUP_ROOT}/cgroup.controllers" ]; then
+  ${SUDO} sh -c "echo '+cpu +memory +pids' > ${CGROUP_ROOT}/cgroup.subtree_control" || true
 fi
 
 make -C "${BACKEND_DIR}/engine" clean

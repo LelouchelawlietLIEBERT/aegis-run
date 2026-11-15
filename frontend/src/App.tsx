@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 
+import DesktopPanel from "./components/DesktopPanel";
 import EditorPane from "./components/EditorPane";
 import HeaderBar from "./components/HeaderBar";
 import KernelConfigPane from "./components/KernelConfigPane";
 import TelemetryConsole from "./components/TelemetryConsole";
+import { WindowManagerProvider } from "./components/WindowManager";
 import { env } from "./config/env";
 import {
   DEFAULT_LIMITS,
@@ -51,8 +53,8 @@ export default function App() {
       }
     };
 
-    probe();
-    const timer = window.setInterval(probe, 15000);
+    void probe();
+    const timer = window.setInterval(() => void probe(), 15000);
     return () => {
       active = false;
       controller.abort();
@@ -68,6 +70,17 @@ export default function App() {
 
   const filename =
     LANGUAGE_OPTIONS.find((option) => option.key === language)?.filename ?? "main.cpp";
+
+  const handleRefreshHealth = async () => {
+    setConnection("checking");
+    try {
+      const health = await checkHealth();
+      setConnection("online");
+      setMode(health.mode);
+    } catch {
+      setConnection("offline");
+    }
+  };
 
   const handleLanguageChange = (next: LanguageKey) => {
     const previousStarter = STARTER_CODE[language];
@@ -148,48 +161,56 @@ export default function App() {
   };
 
   return (
-    <div className="grid-backdrop min-h-screen text-slate-200">
-      <HeaderBar
-        language={language}
-        onLanguageChange={handleLanguageChange}
-        selectedPreset={selectedPreset}
-        onPresetChange={handlePresetChange}
-        onRun={handleRun}
-        running={running}
-        connection={connection}
-        mode={mode}
-      />
+    <WindowManagerProvider>
+      <div className="desktop-shell flex min-h-screen flex-col">
+        <DesktopPanel
+          connection={connection}
+          mode={mode}
+          onRefreshHealth={() => void handleRefreshHealth()}
+        />
 
-      <main className="mx-auto max-w-[1720px] px-4 pb-6 pt-4 sm:px-6">
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-          <div className="xl:col-span-5">
-            <EditorPane
-              language={language}
-              filename={filename}
-              code={code}
-              stdin={stdin}
-              running={running}
-              onCodeChange={handleCodeChange}
-              onStdinChange={setStdin}
-              onLanguageDetected={handleLanguageDetected}
-              onUploadError={(message) => setError(message)}
-              onRun={handleRun}
-            />
+        <HeaderBar
+          language={language}
+          onLanguageChange={handleLanguageChange}
+          selectedPreset={selectedPreset}
+          onPresetChange={handlePresetChange}
+          onRun={() => void handleRun()}
+          running={running}
+          connection={connection}
+          mode={mode}
+        />
+
+        <main className="flex-1 px-2.5 pb-2.5 pt-2.5 sm:px-4 sm:pb-4">
+          <div className="mx-auto grid w-full max-w-[1720px] grid-cols-1 gap-3 xl:grid-cols-12">
+            <div className="min-w-0 xl:col-span-5">
+              <EditorPane
+                language={language}
+                filename={filename}
+                code={code}
+                stdin={stdin}
+                running={running}
+                onCodeChange={handleCodeChange}
+                onStdinChange={setStdin}
+                onLanguageDetected={handleLanguageDetected}
+                onUploadError={(message) => setError(message)}
+                onRun={() => void handleRun()}
+              />
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-3 xl:col-span-7">
+              <KernelConfigPane limits={limits} onChange={handleLimitsChange} disabled={running} />
+              <TelemetryConsole result={result} running={running} error={error} />
+            </div>
           </div>
 
-          <div className="flex flex-col gap-4 xl:col-span-7">
-            <KernelConfigPane limits={limits} onChange={handleLimitsChange} disabled={running} />
-            <TelemetryConsole result={result} running={running} error={error} />
-          </div>
-        </div>
-
-        <footer className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-stroke/60 pt-3 font-mono text-[9px] uppercase tracking-[0.14em] text-slate-600">
-          <span>
-            AEGIS-RUN // UNTRUSTED CODE EXECUTION // {env.apiBaseUrl || "API URL UNCONFIGURED"}
-          </span>
-          <span>cgroup v2 · overlayfs · seccomp-bpf · pivot_root · clone(2)</span>
-        </footer>
-      </main>
-    </div>
+          <footer className="desktop-statusbar mx-auto mt-3 w-full max-w-[1720px]">
+            <span>
+              AEGIS-RUN // UNTRUSTED CODE EXECUTION // {env.apiBaseUrl || "API URL UNCONFIGURED"}
+            </span>
+            <span>cgroup v2 · overlayfs · seccomp-bpf · pivot_root · clone(2)</span>
+          </footer>
+        </main>
+      </div>
+    </WindowManagerProvider>
   );
 }

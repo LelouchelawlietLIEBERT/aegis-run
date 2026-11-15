@@ -18,6 +18,7 @@ import {
 
 import type { SandboxResult } from "../services/sandboxApi";
 import type { ConsoleTab } from "../types/ui";
+import GtkWindow from "./GtkWindow";
 
 interface TelemetryConsoleProps {
   result: SandboxResult | null;
@@ -25,7 +26,7 @@ interface TelemetryConsoleProps {
   error: string | null;
 }
 
-type Tone = "emerald" | "amber" | "crimson";
+type Tone = "success" | "warning" | "danger";
 
 interface StatusStyle {
   label: string;
@@ -36,66 +37,69 @@ interface StatusStyle {
 const STATUS_STYLES: Record<string, StatusStyle> = {
   EXIT_SUCCESS: {
     label: "EXIT_SUCCESS",
-    tone: "emerald",
+    tone: "success",
     description: "Sandboxed process returned exit code 0",
   },
   MEMORY_LIMIT_EXCEEDED: {
     label: "MEMORY_LIMIT_EXCEEDED",
-    tone: "crimson",
+    tone: "danger",
     description: "memory.max ceiling reached and the cgroup OOM killer fired",
   },
   OOM_KILLED: {
     label: "OOM_KILLED",
-    tone: "crimson",
+    tone: "danger",
     description: "memory.events reports an OOM kill",
   },
   PID_LIMIT_HIT: {
     label: "PID_LIMIT_HIT",
-    tone: "amber",
+    tone: "warning",
     description: "pids.max rejected a fork or clone attempt",
   },
   SECURITY_VIOLATION: {
     label: "SECURITY_VIOLATION",
-    tone: "crimson",
+    tone: "danger",
     description: "Seccomp-BPF terminated the process with SIGSYS",
   },
   TIME_LIMIT_EXCEEDED: {
     label: "TIME_LIMIT_EXCEEDED",
-    tone: "amber",
+    tone: "warning",
     description: "The kernel watchdog fired before the process completed",
   },
   COMPILATION_ERROR: {
     label: "COMPILATION_ERROR",
-    tone: "amber",
+    tone: "warning",
     description: "Pass 1 compilation sandbox rejected the source",
   },
   EXIT_FAILURE: {
     label: "EXIT_FAILURE",
-    tone: "amber",
+    tone: "warning",
     description: "The sandboxed process returned a non-zero exit code",
   },
   ENGINE_ERROR: {
     label: "ENGINE_ERROR",
-    tone: "crimson",
+    tone: "danger",
     description: "aegis-run could not establish the sandbox",
   },
 };
 
-const TONE_STYLES: Record<Tone, { card: string; text: string; dot: string }> = {
-  emerald: {
-    card: "border-emerald/40 bg-emerald/10",
-    text: "text-emerald",
-    dot: "bg-emerald",
+const TONE_STYLES: Record<Tone, { card: string; text: string; dot: string; soft: string }> = {
+  success: {
+    card: "border-[#8fdfb6] bg-[#d8f0e3]",
+    text: "text-[#1b8553]",
+    dot: "bg-[#2ec27e]",
+    soft: "bg-[#eaf7f0]",
   },
-  amber: {
-    card: "border-amber/40 bg-amber/10",
-    text: "text-amber",
-    dot: "bg-amber",
+  warning: {
+    card: "border-[#f5c97a] bg-[#fdf0d5]",
+    text: "text-[#ad5d00]",
+    dot: "bg-[#e5a50a]",
+    soft: "bg-[#fdf6e7]",
   },
-  crimson: {
-    card: "border-crimson/40 bg-crimson/10",
-    text: "text-crimson",
-    dot: "bg-crimson",
+  danger: {
+    card: "border-[#f2a5aa] bg-[#fbd8d8]",
+    text: "text-[#c01c28]",
+    dot: "bg-[#e01b24]",
+    soft: "bg-[#fdecec]",
   },
 };
 
@@ -147,13 +151,13 @@ function signalLabel(signal: number): string {
 }
 
 function StatusGlyph({ tone, size = 20 }: { tone: Tone; size?: number }) {
-  if (tone === "emerald") {
-    return <CheckCircle2 size={size} className="text-emerald" />;
+  if (tone === "success") {
+    return <CheckCircle2 size={size} className="text-[#1b8553]" />;
   }
-  if (tone === "amber") {
-    return <AlertTriangle size={size} className="text-amber" />;
+  if (tone === "warning") {
+    return <AlertTriangle size={size} className="text-[#ad5d00]" />;
   }
-  return <XCircle size={size} className="text-crimson" />;
+  return <XCircle size={size} className="text-[#c01c28]" />;
 }
 
 interface MetricCardProps {
@@ -167,48 +171,52 @@ interface MetricCardProps {
 
 function MetricCard({ icon, label, value, valueClass, detail, children }: MetricCardProps) {
   return (
-    <div className="flex flex-col rounded-lg border border-stroke/70 bg-ink/40 p-3">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+    <div className="flex flex-col rounded border border-[#c0bfbc] bg-[#f6f5f4] p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-[#77767b]">
           {label}
         </span>
-        <span className="text-slate-600">{icon}</span>
+        <span className="text-[#9a9996]">{icon}</span>
       </div>
-      <div className={`mt-2 font-mono text-lg font-semibold leading-none ${valueClass ?? "text-slate-100"}`}>
+      <div className={`mt-1.5 font-mono text-[18px] font-bold leading-none ${valueClass ?? "text-charcoal"}`}>
         {value}
       </div>
       <div className="mt-2 flex-1">{children}</div>
-      <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.1em] text-slate-600">{detail}</div>
+      <div className="mt-1 font-mono text-[9px] leading-tight text-[#77767b]">{detail}</div>
     </div>
   );
 }
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-stroke bg-ink/30 px-6 py-14 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-stroke bg-panel text-slate-500">
+    <div className="flex flex-col items-center justify-center rounded border border-dashed border-[#c0bfbc] bg-[#f6f5f4] px-6 py-12 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#c0bfbc] bg-white text-[#77767b] shadow-sm">
         <Activity size={22} />
       </div>
-      <p className="mt-4 font-mono text-[11px] font-semibold tracking-[0.16em] text-slate-400">
-        AWAITING TELEMETRY
+      <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[#5e5c64]">
+        Awaiting telemetry
       </p>
-      <p className="mt-2 max-w-md font-mono text-[10px] leading-relaxed tracking-[0.06em] text-slate-600">
+      <p className="mt-1.5 max-w-md text-[11px] leading-relaxed text-[#77767b]">
         Pick a payload, tune the cgroup envelope and run it. Kernel counters, the waterfall and the
-        overlayfs upperdir diff will stream into this console.
+        OverlayFS upperdir diff will stream into this console.
       </p>
     </div>
   );
 }
 
 function CodeBlock({ content }: { content: string }) {
-  return (
-    <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-stroke/70 bg-[#070b14] px-3 py-3 font-mono text-[11px] leading-relaxed text-slate-300">
-      {content}
-    </pre>
-  );
+  return <pre className="terminal-view max-h-64 whitespace-pre-wrap break-words">{content}</pre>;
 }
 
-function OutputTabs({ result, tab, onTabChange }: { result: SandboxResult; tab: ConsoleTab; onTabChange: (tab: ConsoleTab) => void }) {
+function OutputTabs({
+  result,
+  tab,
+  onTabChange,
+}: {
+  result: SandboxResult;
+  tab: ConsoleTab;
+  onTabChange: (tab: ConsoleTab) => void;
+}) {
   const counts: Record<ConsoleTab, number> = {
     stdout: result.stdout ? 1 : 0,
     stderr: result.stderr || result.compilerOutput ? 1 : 0,
@@ -217,31 +225,33 @@ function OutputTabs({ result, tab, onTabChange }: { result: SandboxResult; tab: 
   };
 
   return (
-    <div className="rounded-lg border border-stroke/70 bg-ink/30">
-      <div className="flex flex-wrap items-center gap-1 border-b border-stroke/70 px-2 py-1.5">
+    <div className="overflow-hidden rounded border border-[#c0bfbc] bg-white">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-[#c0bfbc] bg-[#deddda] px-1.5 py-1">
         {TABS.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => onTabChange(item.id)}
-            className={`rounded px-2.5 py-1.5 font-mono text-[9px] font-semibold tracking-[0.12em] transition ${
+            className={`rounded-t border border-b-0 px-2.5 py-1.5 text-[9px] font-bold tracking-[0.05em] transition ${
               tab === item.id
-                ? "bg-panel text-accent"
-                : "text-slate-500 hover:bg-panel/60 hover:text-slate-300"
+                ? "border-[#c0bfbc] bg-white text-[#1c71d8]"
+                : "border-transparent text-[#5e5c64] hover:bg-white/60"
             }`}
           >
             {item.label}
-            <span className="ml-1.5 text-[8px] text-slate-600">{counts[item.id]}</span>
+            <span className="ml-1.5 text-[8px] font-normal text-[#9a9996]">{counts[item.id]}</span>
           </button>
         ))}
       </div>
 
-      <div className="p-3">
+      <div className="p-2.5">
         {tab === "stdout" ? (
           result.stdout ? (
             <CodeBlock content={result.stdout} />
           ) : (
-            <p className="px-1 py-4 font-mono text-[11px] text-slate-600">No bytes were written to stdout.</p>
+            <p className="px-1 py-4 font-mono text-[11px] text-[#9a9996]">
+              No bytes were written to stdout.
+            </p>
           )
         ) : null}
 
@@ -249,22 +259,22 @@ function OutputTabs({ result, tab, onTabChange }: { result: SandboxResult; tab: 
           <div className="space-y-2">
             {result.compilerOutput ? (
               <div>
-                <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.16em] text-amber">
-                  PASS 1 COMPILER
+                <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#ad5d00]">
+                  Pass 1 compiler
                 </div>
                 <CodeBlock content={result.compilerOutput} />
               </div>
             ) : null}
             {result.stderr ? (
               <div>
-                <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.16em] text-crimson">
-                  PASS 2 STDERR
+                <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#c01c28]">
+                  Pass 2 stderr
                 </div>
                 <CodeBlock content={result.stderr} />
               </div>
             ) : null}
             {!result.compilerOutput && !result.stderr ? (
-              <p className="px-1 py-4 font-mono text-[11px] text-slate-600">
+              <p className="px-1 py-4 font-mono text-[11px] text-[#9a9996]">
                 No compiler diagnostics or stderr output were produced.
               </p>
             ) : null}
@@ -273,35 +283,37 @@ function OutputTabs({ result, tab, onTabChange }: { result: SandboxResult; tab: 
 
         {tab === "audit" ? (
           result.auditLog.length ? (
-            <div className="max-h-64 overflow-auto rounded-lg border border-stroke/70 bg-[#070b14] px-3 py-2">
+            <div className="terminal-view max-h-64">
               {result.auditLog.map((line, index) => (
-                <div key={`${index}-${line}`} className="flex gap-2 font-mono text-[10px] leading-relaxed">
-                  <span className="w-6 shrink-0 text-right text-slate-700">
+                <div key={`${index}-${line}`} className="flex gap-2 leading-relaxed">
+                  <span className="w-6 shrink-0 text-right text-[#77767b]">
                     {String(index + 1).padStart(2, "0")}
                   </span>
-                  <span className="text-slate-400">{line}</span>
+                  <span className="text-[#deddda]">{line}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="px-1 py-4 font-mono text-[11px] text-slate-600">No kernel audit lines recorded.</p>
+            <p className="px-1 py-4 font-mono text-[11px] text-[#9a9996]">
+              No kernel audit lines recorded.
+            </p>
           )
         ) : null}
 
         {tab === "diff" ? (
           result.fsDiff.length ? (
-            <div className="max-h-64 space-y-1 overflow-auto rounded-lg border border-stroke/70 bg-[#070b14] px-3 py-2">
+            <div className="terminal-view max-h-64 space-y-0.5">
               {result.fsDiff.map((line) => (
                 <div
                   key={line}
-                  className={`font-mono text-[10px] leading-relaxed ${
+                  className={`leading-relaxed ${
                     line.startsWith("+")
-                      ? "text-emerald"
+                      ? "text-[#8ff0a4]"
                       : line.startsWith("~")
-                        ? "text-amber"
+                        ? "text-[#f6d32d]"
                         : line.startsWith("-")
-                          ? "text-crimson"
-                          : "text-slate-400"
+                          ? "text-[#ff7b8a]"
+                          : "text-[#deddda]"
                   }`}
                 >
                   {line}
@@ -309,7 +321,7 @@ function OutputTabs({ result, tab, onTabChange }: { result: SandboxResult; tab: 
               ))}
             </div>
           ) : (
-            <p className="px-1 py-4 font-mono text-[11px] text-slate-600">
+            <p className="px-1 py-4 font-mono text-[11px] text-[#9a9996]">
               No files were created, modified or deleted inside the ephemeral overlay upperdir.
             </p>
           )
@@ -327,16 +339,16 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
   }, [result?.jobId]);
 
   const status = result ? STATUS_STYLES[result.status] ?? STATUS_STYLES.EXIT_FAILURE : null;
-  const tone = status ? TONE_STYLES[status.tone] : TONE_STYLES.crimson;
+  const tone = status ? TONE_STYLES[status.tone] : TONE_STYLES.danger;
 
   const waterfall = result
     ? [
-        { label: "Queue Wait", value: result.timings.queueWaitMs, color: "bg-slate-500" },
-        { label: "/dev/shm Stage", value: result.timings.shmStageMs, color: "bg-sky-500" },
-        { label: "Pass 1 Compile", value: result.timings.compileMs, color: "bg-violet-500" },
-        { label: "Kernel Jail Init", value: result.timings.kernelSetupMs, color: "bg-amber" },
-        { label: "Code Execution", value: result.timings.executionMs, color: "bg-emerald" },
-        { label: "Cgroup Teardown", value: result.timings.teardownMs, color: "bg-rose-500" },
+        { label: "Queue Wait", value: result.timings.queueWaitMs, color: "bg-[#9a9996]" },
+        { label: "/dev/shm Stage", value: result.timings.shmStageMs, color: "bg-[#62a0ea]" },
+        { label: "Pass 1 Compile", value: result.timings.compileMs, color: "bg-[#9141ac]" },
+        { label: "Kernel Jail Init", value: result.timings.kernelSetupMs, color: "bg-[#e5a50a]" },
+        { label: "Code Execution", value: result.timings.executionMs, color: "bg-[#2ec27e]" },
+        { label: "Cgroup Teardown", value: result.timings.teardownMs, color: "bg-[#e01b24]" },
       ]
     : [];
   const waterfallTotal = waterfall.reduce((sum, segment) => sum + segment.value, 0);
@@ -346,61 +358,61 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
     result && memoryLimit > 0 ? Math.min(100, (result.peakMemoryBytes / memoryLimit) * 100) : 0;
   const memoryBar =
     result?.oomKilled || memoryPct >= 98
-      ? "bg-crimson"
+      ? "bg-[#e01b24]"
       : memoryPct >= 80
-        ? "bg-amber"
-        : "bg-accent";
+        ? "bg-[#e5a50a]"
+        : "bg-[#3584e4]";
   const cpuTotal = result ? result.cpuUserMs + result.cpuSysMs : 0;
   const userPct = cpuTotal > 0 && result ? (result.cpuUserMs / cpuTotal) * 100 : 0;
 
   return (
-    <section className="rounded-xl border border-stroke bg-panel shadow-panel">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stroke px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Terminal size={16} className="text-accent" />
-          <h2 className="font-mono text-[11px] font-semibold tracking-[0.18em] text-slate-200">
-            TELEMETRY CONSOLE
-          </h2>
-        </div>
-        <div className="flex items-center gap-2">
+    <GtkWindow
+      id="telemetry"
+      title="Telemetry Console"
+      icon={<Terminal size={14} />}
+      bodyClassName="bg-white"
+      badges={
+        <>
           {result ? (
-            <span className="max-w-[180px] truncate rounded border border-stroke bg-ink/60 px-2 py-0.5 font-mono text-[9px] tracking-[0.08em] text-slate-500">
-              JOB {result.jobId.slice(0, 12)}
-            </span>
+            <span className="gtk-badge hidden sm:inline-flex">JOB {result.jobId.slice(0, 12)}</span>
           ) : null}
           <span
-            className={`rounded border px-2 py-0.5 font-mono text-[9px] font-semibold tracking-[0.12em] ${
+            className={`gtk-badge ${
               result?.mode === "kernel"
-                ? "border-emerald/30 bg-emerald/10 text-emerald"
-                : "border-amber/30 bg-amber/10 text-amber"
+                ? "gtk-badge--success"
+                : result
+                  ? "gtk-badge--warning"
+                  : ""
             }`}
           >
             {result?.mode === "kernel" ? "KERNEL" : result ? "DEV PREVIEW" : "STANDBY"}
           </span>
-        </div>
-      </div>
-
-      <div className="space-y-3 p-4">
+        </>
+      }
+    >
+      <div className="space-y-2.5 p-3">
         {error ? (
-          <div className="flex items-start gap-3 rounded-lg border border-crimson/40 bg-crimson/10 px-4 py-3">
-            <XCircle size={18} className="mt-0.5 shrink-0 text-crimson" />
+          <div className="flex items-start gap-2.5 rounded border border-[#f2a5aa] bg-[#fdecec] px-3 py-2.5">
+            <XCircle size={17} className="mt-0.5 shrink-0 text-[#c01c28]" />
             <div>
-              <div className="font-mono text-[10px] font-semibold tracking-[0.16em] text-crimson">
-                OPERATION FAILED
+              <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#c01c28]">
+                Operation failed
               </div>
-              <div className="mt-1 font-mono text-[10px] leading-relaxed text-slate-300">{error}</div>
+              <div className="mt-0.5 font-mono text-[10.5px] leading-relaxed text-[#3d3846]">
+                {error}
+              </div>
             </div>
           </div>
         ) : null}
 
         {running ? (
-          <div className="flex items-center gap-3 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3">
-            <Loader2 size={16} className="animate-spin text-accent" />
+          <div className="flex items-center gap-2.5 rounded border border-[#99c1f1] bg-[#e8f1fb] px-3 py-2.5">
+            <Loader2 size={16} className="animate-spin text-[#1c71d8]" />
             <div>
-              <div className="font-mono text-[10px] font-semibold tracking-[0.16em] text-accent">
-                SANDBOX SCHEDULED
+              <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#1c71d8]">
+                Sandbox scheduled
               </div>
-              <div className="mt-0.5 font-mono text-[10px] text-slate-400">
+              <div className="mt-0.5 font-mono text-[10px] text-[#3d3846]">
                 semaphore slot → /dev/shm staging → compile → pivot_root → seccomp → wait4
               </div>
             </div>
@@ -409,34 +421,36 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
 
         {result && status ? (
           <>
-            <div className={`flex flex-wrap items-center justify-between gap-4 rounded-lg border px-4 py-3 ${tone.card}`}>
-              <div className="flex items-center gap-3">
-                <div className={`flex h-9 w-9 items-center justify-center rounded-lg border border-stroke/40 bg-ink/40 ${tone.text}`}>
+            <div className={`flex flex-wrap items-center justify-between gap-3 rounded border px-3 py-2.5 ${tone.card}`}>
+              <div className="flex items-center gap-2.5">
+                <div className={`flex h-9 w-9 items-center justify-center rounded-full border border-white/70 shadow-sm ${tone.soft}`}>
                   <StatusGlyph tone={status.tone} />
                 </div>
                 <div>
-                  <div className={`font-mono text-sm font-bold tracking-[0.1em] ${tone.text}`}>
+                  <div className={`font-mono text-[13px] font-bold tracking-[0.03em] ${tone.text}`}>
                     {status.label}
                   </div>
-                  <div className="mt-0.5 font-mono text-[10px] text-slate-400">
+                  <div className="mt-0.5 font-mono text-[10px] leading-snug text-[#3d3846]">
                     {result.subReason || status.description}
                   </div>
                 </div>
               </div>
-              <div className="flex gap-5 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">
+              <div className="flex gap-5 font-mono text-[9px] uppercase tracking-[0.06em] text-[#5e5c64]">
                 <div>
-                  <div>EXIT CODE</div>
-                  <div className="mt-0.5 text-xs tracking-normal text-slate-200">{result.exitCode}</div>
+                  <div>Exit code</div>
+                  <div className="mt-0.5 text-[11px] normal-case tracking-normal text-charcoal">
+                    {result.exitCode}
+                  </div>
                 </div>
                 <div>
-                  <div>SIGNAL</div>
-                  <div className="mt-0.5 text-xs tracking-normal text-slate-200">
+                  <div>Signal</div>
+                  <div className="mt-0.5 text-[11px] normal-case tracking-normal text-charcoal">
                     {signalLabel(result.termSignal)}
                   </div>
                 </div>
                 <div>
-                  <div>TOTAL WALL</div>
-                  <div className="mt-0.5 text-xs tracking-normal text-slate-200">
+                  <div>Total wall</div>
+                  <div className="mt-0.5 text-[11px] normal-case tracking-normal text-charcoal">
                     {formatMs(result.totalWallMs)}
                   </div>
                 </div>
@@ -450,8 +464,8 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
                 value={formatMs(result.timings.kernelSetupMs)}
                 detail="clone + pivot_root + proc mount"
               >
-                <div className="h-1.5 overflow-hidden rounded-full bg-ink">
-                  <div className="h-full w-full bg-amber/60" />
+                <div className="h-1.5 overflow-hidden rounded-full bg-[#deddda]">
+                  <div className="h-full w-full bg-[#e5a50a]/70" />
                 </div>
               </MetricCard>
 
@@ -461,9 +475,9 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
                 value={formatMs(result.cpuUserMs + result.cpuSysMs)}
                 detail={`user ${result.cpuUserMs.toFixed(2)} ms · kernel ${result.cpuSysMs.toFixed(2)} ms`}
               >
-                <div className="flex h-1.5 overflow-hidden rounded-full bg-ink">
-                  <div className="h-full bg-accent" style={{ width: `${userPct}%` }} />
-                  <div className="h-full bg-violet-500" style={{ width: `${100 - userPct}%` }} />
+                <div className="flex h-1.5 overflow-hidden rounded-full bg-[#deddda]">
+                  <div className="h-full bg-[#3584e4]" style={{ width: `${userPct}%` }} />
+                  <div className="h-full bg-[#9141ac]" style={{ width: `${100 - userPct}%` }} />
                 </div>
               </MetricCard>
 
@@ -471,15 +485,15 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
                 icon={<MemoryStick size={14} />}
                 label="Peak Cgroup RAM"
                 value={formatBytes(result.peakMemoryBytes)}
-                valueClass={result.oomKilled ? "text-crimson" : "text-slate-100"}
+                valueClass={result.oomKilled ? "text-[#c01c28]" : "text-charcoal"}
                 detail={`memory.max = ${formatBytes(memoryLimit)} · swap.max = 0`}
               >
                 <div className="flex items-center gap-2">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#deddda]">
                     <div className={`h-full ${memoryBar}`} style={{ width: `${memoryPct}%` }} />
                   </div>
                   {result.oomKilled ? (
-                    <span className="rounded border border-crimson/40 bg-crimson/10 px-1.5 py-0.5 font-mono text-[8px] font-bold tracking-[0.12em] text-crimson">
+                    <span className="gtk-badge gtk-badge--danger px-1 py-0 text-[8px] font-bold">
                       OOM
                     </span>
                   ) : null}
@@ -490,30 +504,34 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
                 icon={<Lock size={14} />}
                 label="PIDs & Syscall Gate"
                 value={result.pidsMaxHit ? "CEILING HIT" : "WITHIN CAP"}
-                valueClass={result.pidsMaxHit ? "text-amber" : "text-emerald"}
+                valueClass={result.pidsMaxHit ? "text-[#ad5d00]" : "text-[#1b8553]"}
                 detail={`pids.max = ${result.maxPids} · seccomp ${
                   result.blockedSyscall ? result.blockedSyscall : "armed"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 rounded-full ${result.pidsMaxHit ? "bg-amber" : "bg-emerald"}`} />
-                  <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-slate-500">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      result.pidsMaxHit ? "bg-[#e5a50a]" : "bg-[#2ec27e]"
+                    }`}
+                  />
+                  <span className="text-[9px] uppercase tracking-[0.04em] text-[#5e5c64]">
                     {result.blockedSyscall ? "syscall blocked" : "filter loaded"}
                   </span>
                 </div>
               </MetricCard>
             </div>
 
-            <div className="rounded-lg border border-stroke/70 bg-ink/30 p-3">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  EXECUTION WATERFALL
+            <div className="rounded border border-[#c0bfbc] bg-[#f6f5f4] p-2.5">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-[#77767b]">
+                  Execution Waterfall
                 </span>
-                <span className="font-mono text-[9px] tracking-[0.1em] text-slate-600">
+                <span className="font-mono text-[9px] text-[#77767b]">
                   total {formatMs(waterfallTotal)}
                 </span>
               </div>
-              <div className="flex h-2.5 overflow-hidden rounded-full bg-ink">
+              <div className="flex h-2.5 overflow-hidden rounded-full border border-[#c0bfbc] bg-[#deddda]">
                 {waterfallTotal > 0 ? (
                   waterfall
                     .filter((segment) => segment.value > 0)
@@ -526,17 +544,15 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
                       />
                     ))
                 ) : (
-                  <div className="h-full w-full bg-slate-700" />
+                  <div className="h-full w-full bg-[#deddda]" />
                 )}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
                 {waterfall.map((segment) => (
                   <div key={segment.label} className="flex items-center gap-1.5">
                     <span className={`h-1.5 w-1.5 rounded-full ${segment.color}`} />
-                    <span className="font-mono text-[9px] tracking-[0.06em] text-slate-500">
-                      {segment.label}
-                    </span>
-                    <span className="ml-auto font-mono text-[9px] text-slate-400">
+                    <span className="text-[9px] text-[#5e5c64]">{segment.label}</span>
+                    <span className="ml-auto font-mono text-[9px] text-[#3d3846]">
                       {formatMs(segment.value)}
                     </span>
                   </div>
@@ -546,7 +562,7 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
 
             <OutputTabs result={result} tab={tab} onTabChange={setTab} />
 
-            <div className="grid gap-2 font-mono text-[9px] uppercase tracking-[0.1em] text-slate-600 sm:grid-cols-3">
+            <div className="grid gap-x-3 gap-y-1 border-t border-[#deddda] pt-2 font-mono text-[9px] uppercase tracking-[0.04em] text-[#77767b] sm:grid-cols-3">
               <div className="flex items-center gap-1.5">
                 <Clock3 size={12} /> Execution {formatMs(result.timings.executionMs)}
               </div>
@@ -562,6 +578,6 @@ export default function TelemetryConsole({ result, running, error }: TelemetryCo
 
         {!result && !running && !error ? <EmptyState /> : null}
       </div>
-    </section>
+    </GtkWindow>
   );
 }

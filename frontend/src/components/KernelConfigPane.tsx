@@ -2,6 +2,7 @@ import { AlertTriangle, Cpu, Gauge, Hash, MemoryStick, Network, ShieldCheck, Tim
 import type { ReactNode } from "react";
 
 import type { SandboxLimits } from "../config/presets";
+import GtkWindow from "./GtkWindow";
 
 interface KernelConfigPaneProps {
   limits: SandboxLimits;
@@ -35,20 +36,20 @@ function SliderRow({
   onChange,
 }: SliderRowProps) {
   return (
-    <div className="rounded-lg border border-stroke/70 bg-ink/40 px-3 py-3">
+    <div className="rounded border border-[#c0bfbc] bg-[#f6f5f4] px-3 py-2.5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-slate-500">{icon}</span>
+          <span className="text-[#5e5c64]">{icon}</span>
           <div>
-            <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+            <div className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-charcoal">
               {label}
             </div>
-            <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-slate-600">{metric}</div>
+            <div className="font-mono text-[9px] uppercase tracking-[0.03em] text-[#77767b]">
+              {metric}
+            </div>
           </div>
         </div>
-        <span className="rounded border border-stroke bg-panel px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-200">
-          {display}
-        </span>
+        <span className="gtk-badge bg-white font-semibold text-charcoal">{display}</span>
       </div>
       <input
         type="range"
@@ -57,8 +58,9 @@ function SliderRow({
         step={step}
         value={value}
         disabled={disabled}
+        aria-label={label}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-slate-700/70 disabled:cursor-not-allowed disabled:opacity-50"
+        className="gtk-scale mt-2"
       />
     </div>
   );
@@ -75,14 +77,16 @@ interface ToggleRowProps {
 
 function ToggleRow({ icon, label, metric, checked, disabled, onChange }: ToggleRowProps) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-stroke/70 bg-ink/40 px-3 py-2.5">
+    <div className="flex items-center justify-between gap-3 rounded border border-[#c0bfbc] bg-white px-3 py-2.5">
       <div className="flex items-center gap-2">
-        <span className={checked ? "text-emerald" : "text-slate-500"}>{icon}</span>
+        <span className={checked ? "text-[#3584e4]" : "text-[#77767b]"}>{icon}</span>
         <div>
-          <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-300">
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.05em] text-charcoal">
             {label}
           </div>
-          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-slate-600">{metric}</div>
+          <div className="font-mono text-[9px] uppercase tracking-[0.03em] text-[#77767b]">
+            {metric}
+          </div>
         </div>
       </div>
       <button
@@ -92,15 +96,9 @@ function ToggleRow({ icon, label, metric, checked, disabled, onChange }: ToggleR
         aria-label={label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative h-5 w-9 shrink-0 rounded-full border transition disabled:cursor-not-allowed disabled:opacity-50 ${
-          checked ? "border-emerald/50 bg-emerald/80" : "border-stroke bg-slate-700/70"
-        }`}
+        className="gtk-switch disabled:opacity-50"
       >
-        <span
-          className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-all ${
-            checked ? "left-[18px]" : "left-0.5"
-          }`}
-        />
+        <span className="gtk-switch__knob" />
       </button>
     </div>
   );
@@ -125,25 +123,19 @@ export default function KernelConfigPane({ limits, onChange, disabled }: KernelC
   ];
 
   return (
-    <section className="rounded-xl border border-stroke bg-panel shadow-panel">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stroke px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Cpu size={16} className="text-accent" />
-          <h2 className="font-mono text-[11px] font-semibold tracking-[0.18em] text-slate-200">
-            KERNEL CONFIGURATION
-          </h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded border border-stroke bg-ink/60 px-2 py-0.5 font-mono text-[9px] tracking-[0.12em] text-slate-500">
-            cgroup v2
-          </span>
-          <span className="rounded border border-accent/30 bg-accent/10 px-2 py-0.5 font-mono text-[9px] tracking-[0.12em] text-accent">
-            swap.max = 0
-          </span>
-        </div>
-      </div>
-
-      <div className="grid gap-3 px-4 py-4 sm:grid-cols-2">
+    <GtkWindow
+      id="kernel"
+      title="Kernel Configuration"
+      icon={<Cpu size={14} />}
+      bodyClassName="bg-white"
+      badges={
+        <>
+          <span className="gtk-badge hidden sm:inline-flex">cgroup v2</span>
+          <span className="gtk-badge gtk-badge--accent hidden sm:inline-flex">swap.max = 0</span>
+        </>
+      }
+    >
+      <div className="grid gap-2.5 p-3 sm:grid-cols-2">
         <SliderRow
           icon={<MemoryStick size={15} />}
           label="Memory Cap"
@@ -194,7 +186,7 @@ export default function KernelConfigPane({ limits, onChange, disabled }: KernelC
         />
       </div>
 
-      <div className="grid gap-2 border-t border-stroke px-4 py-3 sm:grid-cols-2">
+      <div className="grid gap-2 border-t border-[#deddda] bg-[#f6f5f4] p-3 sm:grid-cols-2">
         <ToggleRow
           icon={<ShieldCheck size={15} />}
           label="Seccomp-BPF Strict Filter"
@@ -214,32 +206,34 @@ export default function KernelConfigPane({ limits, onChange, disabled }: KernelC
       </div>
 
       {limits.strictSeccomp && limits.enableNetwork ? (
-        <div className="mx-4 mb-3 flex items-start gap-2 rounded-lg border border-amber/30 bg-amber/10 px-3 py-2 font-mono text-[10px] leading-relaxed text-amber">
+        <div className="mx-3 mb-3 flex items-start gap-2 rounded border border-[#f5c97a] bg-[#fdf0d5] px-3 py-2 text-[10.5px] leading-relaxed text-[#8a4d00]">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-          Network access removes CLONE_NEWNET isolation and leaves socket, connect, bind, listen and
-          accept unblocked. The sandbox shares the host network stack for this run.
+          <span>
+            Network access removes CLONE_NEWNET isolation and leaves socket, connect, bind, listen
+            and accept unblocked. The sandbox shares the host network stack for this run.
+          </span>
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-stroke px-4 py-3">
-        <span className="mr-1 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-600">
-          ACTIVE
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-[#deddda] bg-[#f6f5f4] px-3 py-2.5">
+        <span className="mr-1 text-[9px] font-bold uppercase tracking-[0.1em] text-[#77767b]">
+          Active
         </span>
         {pills.map((pill) => (
           <span
             key={pill}
-            className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-[0.08em] ${
+            className={`gtk-badge ${
               pill === "SECCOMP_BPF"
-                ? "border-emerald/30 bg-emerald/10 text-emerald"
+                ? "gtk-badge--success"
                 : pill === "NEWNET"
-                  ? "border-accent/30 bg-accent/10 text-accent"
-                  : "border-stroke bg-ink/60 text-slate-400"
+                  ? "gtk-badge--accent"
+                  : ""
             }`}
           >
             {pill}
           </span>
         ))}
       </div>
-    </section>
+    </GtkWindow>
   );
 }

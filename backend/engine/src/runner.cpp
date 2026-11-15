@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -40,20 +41,37 @@ struct ChildContext {
     int audit_fd;
 };
 
+void write_payload(int fd, const char* data, std::size_t size) {
+    if (fd < 0) {
+        return;
+    }
+    std::size_t written = 0;
+    while (written < size) {
+        const ssize_t result = ::write(fd, data + written, size - written);
+        if (result < 0 && errno == EINTR) {
+            continue;
+        }
+        if (result <= 0) {
+            return;
+        }
+        written += static_cast<std::size_t>(result);
+    }
+}
+
 void write_audit_lines(int fd, const std::vector<std::string>& lines) {
     if (fd < 0) {
         return;
     }
     for (const auto& line : lines) {
         const std::string payload = line + "\n";
-        (void)::write(fd, payload.data(), payload.size());
+        write_payload(fd, payload.data(), payload.size());
     }
 }
 
 int child_fail(ChildContext& context, const std::string& message, int code) {
     if (context.ready_fd >= 0) {
         const std::string payload = "E" + message;
-        (void)::write(context.ready_fd, payload.data(), payload.size());
+        write_payload(context.ready_fd, payload.data(), payload.size());
         ::close(context.ready_fd);
         context.ready_fd = -1;
     }
@@ -149,7 +167,7 @@ int child_entry(void* raw_context) {
 
     if (context->ready_fd >= 0) {
         const char ready = 'R';
-        (void)::write(context->ready_fd, &ready, 1);
+        write_payload(context->ready_fd, &ready, 1);
         ::close(context->ready_fd);
         context->ready_fd = -1;
     }
@@ -168,7 +186,7 @@ int child_entry(void* raw_context) {
     ::execvp(arguments[0], arguments.data());
     const std::string message =
         std::string("exec failed for ") + arguments[0] + ": " + std::strerror(errno) + "\n";
-    (void)::write(STDERR_FILENO, message.data(), message.size());
+    write_payload(STDERR_FILENO, message.data(), message.size());
     ::_exit(127);
     return 127;
 }
@@ -243,17 +261,6 @@ void append_string_array(std::ostringstream& stream, const std::vector<std::stri
 
 ExecutionResult run_sandbox(const SandboxConfig& config) {
     ExecutionResult result;
-    result.namespaces = {"NEWPID", "NEWNS", "NEWUTS", "NEWIPC"};
-    if (!config.enable_network) {
-        result.namespaces.emplace_back("NEWNET");
-    }
-    result.namespaces.emplace_back("OVERLAYFS");
-    result.namespaces.emplace_back("PIVOT_ROOT");
-    result.namespaces.emplace_back("UID_65534");
-    if (config.strict_seccomp) {
-        result.namespaces.emplace_back("SECCOMP_BPF");
-    }
-
     CgroupV2Manager cgroup(config.cgroup_root, config.job_id);
     std::string error;
 
@@ -301,7 +308,7 @@ ExecutionResult run_sandbox(const SandboxConfig& config) {
     const int audit_fd =
         ::open(child_audit_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 
-    constexpr std::size_t stack_size = 1024 * 1024;
+    constexpr std::size_t stack_size = 8 * 1024 * 1024;
     void* stack = ::mmap(nullptr, stack_size, PROT_READ | PROT_WRITE,
                          MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
     if (stack == MAP_FAILED) {
@@ -427,6 +434,16 @@ ExecutionResult run_sandbox(const SandboxConfig& config) {
     }
 
     result.audit_log.push_back("clone: sandbox child signalled readiness");
+    result.namespaces = {"NEWPID", "NEWNS", "NEWUTS", "NEWIPC"};
+    if (!config.enable_network) {
+        result.namespaces.emplace_back("NEWNET");
+    }
+    result.namespaces.emplace_back("OVERLAYFS");
+    result.namespaces.emplace_back("PIVOT_ROOT");
+    result.namespaces.emplace_back("UID_65534");
+    if (config.strict_seccomp) {
+        result.namespaces.emplace_back("SECCOMP_BPF");
+    }
 
     const auto exec_start = SteadyClock::now();
     int status = 0;
