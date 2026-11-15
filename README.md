@@ -4,8 +4,6 @@ Aegis-Run is an experimental Linux code-execution sandbox with a browser-based s
 
 The project combines a React + TypeScript frontend, a FastAPI orchestration layer, and a C++20 Linux execution engine.
 
-> **Status:** Experimental / in development. The screenshots show the current UI and example executions. Do not expose this service to untrusted users or the public internet until the isolation model, privilege boundaries, API authentication, and deployment configuration have been independently security-reviewed.
-
 ## Screenshots
 
 ### Successful C++ execution
@@ -246,7 +244,3 @@ The UI's “within cap” indicator and a successful test run are telemetry, not
 ## Current implementation notes
 
 The architecture and setup instructions in this README describe the intended project layout and execution flow. Confirm each capability against the implementation in your current checkout before relying on it. In particular, availability of the native kernel engine, root filesystem setup, cgroup delegation, and telemetry fields depends on the host configuration and completed backend implementation.
-
-## License
-
-No license has been specified yet. Add a `LICENSE` file before distributing or accepting contributions under explicit reuse terms.
