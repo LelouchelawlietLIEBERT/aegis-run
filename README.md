@@ -1,6 +1,6 @@
 # Aegis-Run — Linux Kernel Sandbox
 
-Aegis-Run is an experimental Linux code-execution sandbox with a browser-based systems console. It is designed to run untrusted C, C++, Python, and JavaScript programs inside isolated execution environments while exposing resource limits and kernel-level telemetry.
+Aegis-Run is a Linux code-execution sandbox with a browser-based systems console. It is designed to run untrusted C, C++, Python, and JavaScript programs inside isolated execution environments while exposing resource limits and kernel-level telemetry.
 
 The project combines a React + TypeScript frontend, a FastAPI orchestration layer, and a C++20 Linux execution engine.
 
